@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="initial-scale=1.0">
+  <title>MOTOBOYS PERÚ</title>
+  <style>
+    #container {
+      display: flex;
+      height: 100%;
+    }
+    #map {
+      height: 100%;
+      width: 65%;
+    }
+    #cotizador {
+      width: 35%;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #registro, #inicioSesion {
+      display: none;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Motoboys Perú - Calculadora de precios</h1>
+  
+  <button onclick="mostrarFormularioRegistro()">Registrarse</button>
+  <button onclick="mostrarFormularioInicio()">Iniciar Sesión</button>  
+
+  <div id="container">
+    <div id="map"></div>
+    <div id="cotizador">
+      <div id="usuarioInfo" style="display: none;">
+        <p>Hola, <span id="nombreUsuario"></span></p>
+        <button onclick="cerrarSesion()">Cerrar Sesión</button>
+      </div>
+      <div id="registro">
+        <h2>Registro</h2>
+        <label for="nombreRegistro">Nombre:</label>
+        <input type="text" id="nombreRegistro" /><br />
+        <label for="apellidoRegistro">Apellido:</label>
+        <input type="text" id="apellidoRegistro" /><br />
+        <label for="celularRegistro">Número de Celular:</label>
+        <input type="text" id="celularRegistro" /><br />
+        <label for="usuarioRegistro">Nombre de Usuario:</label>
+        <input type="text" id="usuarioRegistro" /><br />
+        <label for="emailRegistro">Email:</label>
+        <input type="email" id="emailRegistro" /><br />
+        <label for="passwordRegistro">Password:</label>
+        <input type="password" id="passwordRegistro" /><br />
+        <button onclick="registrarse()">Registrarse</button>
+      </div>
+      <div id="inicioSesion">
+        <h2>Iniciar Sesión</h2>
+        <label for="emailInicio">Email:</label>
+        <input type="email" id="emailInicio" /><br />
+        <label for="passwordInicio">Password:</label>
+        <input type="password" id="passwordInicio" /><br />
+        <button onclick="iniciarSesion()">Iniciar Sesión</button>
+      </div>
+      <label for="direccionOrigen">Dirección de Origen:</label>
+      <input type="text" id="direccionOrigen" /><br />
+
+      <label for="direccionDestino">Dirección de Destino:</label>
+      <input type="text" id="direccionDestino" /><br />
+
+      <button onclick="calcularDistancia();">Calcular Distancia</button>
+      <a id="linkRuta" target="_blank" style="display: none"></a>
+
+      <label for="distancia">Distancia (km): </label>
+      <input type="number" id="distancia" /><br />
+
+      <label for="tamaño">Tamaño (cm³): </label>
+      <input type="number" id="tamaño" /><br />
+
+      <label for="peso">Peso (kg): </label>
+      <input type="number" id="peso" /><br />
+
+      <label for="servicio">Tipo de Servicio: </label>
+      <select id="servicio">
+        <option value="viaje">Viaje</option>
+        <option value="envio">Envío</option>
+      </select><br />
+
+      <label for="urgencia">Nivel de Urgencia: </label>
+      <select id="urgencia">
+        <option value="normal">Normal</option>
+        <option value="urgente">Urgente</option>
+        <option value="inmediato">Inmediato</option>
+      </select><br />
+
+      <label for="vehiculo">Tipo de Vehículo: </label>
+      <select id="vehiculo">
+        <option value="moto">Moto</option>
+        <option value="auto">Auto</option>
+        <option value="camion">Camión</option>
+      </select><br />
+
+      <button onclick="calcularPrecio()">Calcular Precio</button>
+
+      <p>El precio del servicio es: S/ <span id="resultado">0</span> Soles</p>
+      <button onclick="enviarPedidoPorWhatsApp()">OK, Pedir por WhatsApp</button>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAtPa5Ob04CoH43UvK7N_8lACal4sZYErQ&callback=initMap&libraries=places,geometry" async defer></script>
+  
+  <script>
+    var map;
+    var directionsService;
+    var directionsRenderer;
+    var autocompleteOrigen;
+    var autocompleteDestino;
+    var db;
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: -12.0621387, lng: -77.0143276 },
+        zoom: 12
+      });
+
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer();
+
+      directionsRenderer.setMap(map);
+
+      obtenerUbicacionActual();
+
+      // Autocomplete para las direcciones
+      var inputOrigen = document.getElementById('direccionOrigen');
+      var inputDestino = document.getElementById('direccionDestino');
+      
+      autocompleteOrigen = new google.maps.places.Autocomplete(inputOrigen);
+      autocompleteDestino = new google.maps.places.Autocomplete(inputDestino);
+    }
+
+    function obtenerUbicacionActual() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          var userLatLng = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+
+          var marker = new google.maps.Marker({
+            position: userLatLng,
+            map: map,
+            title: 'Mi Ubicación Actual'
+          });
+
+          map.setCenter(userLatLng);
+
+          var geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ 'location': userLatLng }, function(results, status) {
+            if (status === 'OK' && results[0]) {
+              document.getElementById('direccionOrigen').value = results[0].formatted_address;
+            } else {
+              document.getElementById('direccionOrigen').value = 'No se pudo determinar la dirección exacta.';
+            }
+          });
+        }, function(error) {
+          alert('No se pudo obtener la ubicación actual del usuario. Error: ' + error.message);
+        }, {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        });
+      } else {
+        alert('La geolocalización no está soportada por tu navegador.');
+      }
+    }
+
+    async function calcularDistancia() {
+      const direccionOrigen = document.getElementById('direccionOrigen').value;
+      const direccionDestino = document.getElementById('direccionDestino').value;
+
+      const request = {
+        origin: direccionOrigen,
+        destination: direccionDestino,
+        travelMode: 'DRIVING'
+      };
+
+      directionsService.route(request, function(result, status) {
+        if (status === 'OK') {
+          directionsRenderer.setDirections(result);
+          const distancia = result.routes[0].legs[0].distance.value / 1000; // convertir a kilómetros
+          document.getElementById('distancia').value = distancia.toFixed(2);
+          document.getElementById('linkRuta').href = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(direccionOrigen)}&destination=${encodeURIComponent(direccionDestino)}`;
+          document.getElementById('linkRuta').textContent = 'Ver Ruta en Google Maps';
+          document.getElementById('linkRuta').style.display = 'block';
+        } else {
+          alert('No se pudo calcular la distancia. Error: ' + status);
+        }
+      });
+    }
+
+    function calcularPrecio() {
+      const servicio = document.getElementById('servicio').value;
+      const distancia = parseFloat(document.getElementById('distancia').value);
+      const tamaño = parseFloat(document.getElementById('tamaño').value);
+      const peso = parseFloat(document.getElementById('peso').value);
+      const urgencia = document.getElementById('urgencia').value;
+      const vehiculo = document.getElementById('vehiculo').value;
+
+      let precioBase = 4 + distancia * 0.7 + tamaño * 0.00005 + peso * 0.05;
+      if (urgencia === 'urgente') {
+        precioBase *= 1.4;
+      }
+      if (urgencia === 'inmediato') {
+        precioBase *= 1.8;
+      }
+      if (vehiculo === 'camion') {
+        precioBase *= 1.5;
+      }
+      if (vehiculo === 'auto') {
+        precioBase += 10;
+      }
+
+      document.getElementById('resultado').textContent = precioBase.toFixed(2) + ' Soles';
+    }
+
+    async function enviarPedidoPorWhatsApp() {
+      const servicio = document.getElementById('servicio').value;
+      const distancia = parseFloat(document.getElementById('distancia').value);
+      const tamaño = parseFloat(document.getElementById('tamaño').value);
+      const peso = parseFloat(document.getElementById('peso').value);
+      const urgencia = document.getElementById('urgencia').value;
+      const vehiculo = document.getElementById('vehiculo').value;
+
+      let precioBase = 4 + distancia * 0.7 + tamaño * 0.00005 + peso * 0.05;
+      if (urgencia === 'urgente') {
+        precioBase *= 1.4;
+      }
+      if (urgencia === 'inmediato') {
+        precioBase *= 1.8;
+      }
+      if (vehiculo === 'camion') {
+        precioBase *= 1.5;
+      }
+      if (vehiculo === 'auto') {
+        precioBase += 10;
+      }
+
+      const mensaje = `Hola, quiero hacer un pedido. Aquí están los detalles:\n
+      Servicio: ${servicio}
+      Distancia: ${distancia} km
+      Tamaño: ${tamaño} cm³
+      Peso: ${peso} kg
+      Urgencia: ${urgencia}
+      Vehículo: ${vehiculo}
+      Precio: ${precioBase.toFixed(2)} SOLES
+      Ver Ruta en Google Maps: ${document.getElementById('linkRuta').href}`;
+
+      const numeroWhatsApp = '51925666769'; // Reemplaza con tu número de WhatsApp
+      const enlaceWhatsApp = `https://wa.me/${numeroWhatsApp}/?text=${encodeURIComponent(mensaje)}`;
+
+      // Guardar el pedido en Firestore
+      const user = firebase.auth().currentUser;
+      if (user) {
+        await db.collection('pedidos').add({
+          userId: user.uid,
+          servicio,
+          distancia,
+          tamaño,
+          peso,
+          urgencia,
+          vehiculo,
+          precio: precioBase,
+          estado: 'Disponible',  // Estado inicial del pedido
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert('Pedido guardado con éxito.');
+      } else {
+        alert('Por favor, inicia sesión para guardar tu pedido.');
+      }
+
+      window.open(enlaceWhatsApp, '_blank');
+    }
+
+    function mostrarFormularioRegistro() {
+      document.getElementById('registro').style.display = 'block';
+      document.getElementById('inicioSesion').style.display = 'none';
+    }
+
+    function mostrarFormularioInicio() {
+      document.getElementById('registro').style.display = 'none';
+      document.getElementById('inicioSesion').style.display = 'block';
+    }
+
+    function registrarse() {
+      const nombre = document.getElementById('nombreRegistro').value;
+      const apellido = document.getElementById('apellidoRegistro').value;
+      const celular = document.getElementById('celularRegistro').value;
+      const usuario = document.getElementById('usuarioRegistro').value;
+      const email = document.getElementById('emailRegistro').value;
+      const password = document.getElementById('passwordRegistro').value;
+
+      firebase.auth().onAuthStateChanged((user) => {
+  if (user) {
+    // Usuario autenticado
+    // Actualizar la interfaz de usuario, por ejemplo, mostrar el nombre de usuario
+    mostrarUsuarioAutenticado(user);
+  } else {
+    // Usuario no autenticado
+    // Ocultar información del usuario y mostrar formularios de inicio de sesión y registro
+    mostrarFormularioInicioSesion();
+  }
+});
+
+function mostrarUsuarioAutenticado(user) {
+  // Aquí puedes mostrar información del usuario autenticado, como su nombre de usuario
+  const nombreUsuario = user.displayName || user.email;
+  document.getElementById('nombreUsuario').textContent = nombreUsuario;
+  document.getElementById('usuarioInfo').style.display = 'block';
+  document.getElementById('registro').style.display = 'none';
+  document.getElementById('inicioSesion').style.display = 'none';
+}
+
+function mostrarFormularioInicioSesion() {
+  // Mostrar formularios de inicio de sesión y registro
+  document.getElementById('usuarioInfo').style.display = 'none';
+  document.getElementById('registro').style.display = 'block';
+  document.getElementById('inicioSesion').style.display = 'block';
+}
+firebase.auth().createUserWithEmailAndPassword(email, password)
+      .then((userCredential) => {
+        const user = userCredential.user;
+        return db.collection('users').doc(user.uid).set({
+          nombre,
+          apellido,
+          celular,
+          usuario,
+          email
+        });
+      })
+      .then(() => {
+        alert('Usuario registrado con éxito');
+      })
+      .catch((error) => {
+        alert('Error al registrar usuario: ' + error.message);
+      });
+    }
+
+    function iniciarSesion() {
+      const email = document.getElementById('emailInicio').value;
+      const password = document.getElementById('passwordInicio').value;
+
+      firebase.auth().signInWithEmailAndPassword(email, password)
+      .then((userCredential) => {
+        const user = userCredential.user;
+        return db.collection('users').doc(user.uid).get();
+      })
+      .then((doc) => {
+        if (doc.exists) {
+          const userData = doc.data();
+          document.getElementById('nombreUsuario').textContent = userData.usuario;
+          document.getElementById('usuarioInfo').style.display = 'block';
+          document.getElementById('registro').style.display = 'none';
+          document.getElementById('inicioSesion').style.display = 'none';
+        }
+      })
+      .catch((error) => {
+        alert('Error al iniciar sesión: ' + error.message);
+      });
+    }
+
+    function cerrarSesion() {
+      firebase.auth().signOut()
+      .then(() => {
+        document.getElementById('usuarioInfo').style.display = 'none';
+        alert('Sesión cerrada exitosamente');
+      })
+      .catch((error) => {
+        alert('Error al cerrar sesión: ' + error.message);
+      });
+    }
+
+    // Inicializar Firebase
+    document.addEventListener('DOMContentLoaded', () => {
+      var firebaseConfig = {
+        apiKey: "AIzaSyBZ3M2lqoiu53BNhojEhqUjClAbWyQ2NiI",
+        authDomain: "motoboys-base.firebaseapp.com",
+        databaseURL: "https://motoboys-base-default-rtdb.firebaseio.com",
+        projectId: "motoboys-base",
+        storageBucket: "motoboys-base.appspot.com",
+        messagingSenderId: "448001740533",
+        appId: "1:448001740533:web:9bd8e2db5e6f481d86bfbc"
+      };
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+    });
+  </script>
+</body>
+</html>
